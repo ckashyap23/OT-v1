@@ -37,3 +37,7 @@ flutter_app/.android/
 .DS_Store
 Thumbs.db
 
+# Deployment
+deploy.zip
+*.zip
+
