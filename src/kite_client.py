@@ -1,9 +1,14 @@
-from typing import Any, List
+import time
+from typing import Any, List, Iterable, Dict
 
 from kiteconnect import KiteConnect
 
 from .config import Settings
 
+def _chunked(seq: Iterable[str], size: int) -> Iterable[List[str]]:
+    items = list(seq)
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
 
 class KiteClient:
     def __init__(self, settings: Settings) -> None:
@@ -39,9 +44,62 @@ class KiteClient:
         """Return full instruments dump for NFO (F&O segment)."""
         return self.kite.instruments("NFO")
 
-    def fetch_instruments_equity(self) -> List[dict[str, Any]]:
+    def fetch_instruments_equity_indices(self) -> List[dict[str, Any]]:
         """
-        Return full instruments dump for NSE equities.
-        (You can add BSE later if needed.)
+        Return full instruments dump for NSE and BSE equities and indices.
+        Combines data from both exchanges.
         """
-        return self.kite.instruments("NSE")
+        nse_instruments = self.kite.instruments("NSE")
+        bse_instruments = self.kite.instruments("BSE")
+        return nse_instruments + bse_instruments
+
+# ------------ live market data helpers ------------
+
+    def fetch_ltp_bulk(self, symbols: List[str]) -> Dict[str, Any]:
+        """
+        Wrapper over kite.ltp for a list of symbols like 'NSE:NIFTY 50',
+        'NFO:NIFTY25D0926000CE', etc.
+        """
+        if not symbols:
+            return {}
+
+        result: Dict[str, Any] = {}
+        # ltp can handle quite a few symbols, but we still chunk + throttle a bit
+        for chunk in _chunked(symbols, 400):
+            resp = self.kite.ltp(chunk)
+            result.update(resp)
+            time.sleep(0.25)
+        return result
+
+    def fetch_quote_bulk(self, symbols: List[str]) -> Dict[str, Any]:
+        """
+        Wrapper over kite.quote for a list of symbols like 'NFO:NIFTY25D0926000CE'.
+
+        Kite docs: max 500 instruments per quote call; we respect that and
+        add a small sleep to stay inside rate limits.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if not symbols:
+            return {}
+
+        result: Dict[str, Any] = {}
+        chunks = list(_chunked(symbols, 500))
+        total_chunks = len(chunks)
+        logger.info(f"Fetching quotes for {len(symbols)} symbols in {total_chunks} chunks...")
+        
+        for idx, chunk in enumerate(chunks, 1):
+            logger.info(f"Fetching chunk {idx}/{total_chunks} ({len(chunk)} symbols)...")
+            try:
+                resp = self.kite.quote(chunk)
+                result.update(resp)
+                if idx < total_chunks:  # Don't sleep after last chunk
+                    time.sleep(0.35)
+            except Exception as e:
+                logger.error(f"Error fetching chunk {idx}: {e}")
+                # Continue with other chunks even if one fails
+                continue
+        
+        logger.info(f"Fetched quotes for {len(result)} symbols")
+        return result

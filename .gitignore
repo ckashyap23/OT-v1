@@ -4,10 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-.venv/
-ENV/
 build/
 dist/
 *.egg-info/
@@ -37,7 +33,8 @@ flutter_app/.android/
 .DS_Store
 Thumbs.db
 
-# Deployment
-deploy.zip
-*.zip
+# Scripts (backfill and bootstrap)
+scripts/backfill_nifty_options_30d.py
+scripts/backfill_nifty_underlying_30d.py
+scripts/bootstrap_instruments.py
 
